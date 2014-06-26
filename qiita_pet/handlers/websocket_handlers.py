@@ -1,10 +1,12 @@
 # adapted from
-# https://github.com/leporo/tornado-redis/blob/master/demos/websockets
+# https://gist.github.com/abhinavsingh/6378134
 from json import loads
 
-from tornadoredis import Client
+from zmq import Context, SUB, SUBSCRIBE
+from zmq.eventloop import ioloop
+from zmq.eventloop.zmqstream import ZMQStream
 from tornado.websocket import WebSocketHandler
-from tornado.gen import engine, Task
+from tornado.gen import engine
 
 from qiita_ware.run import r_server
 
@@ -17,8 +19,11 @@ from qiita_ware.run import r_server
 class MessageHandler(WebSocketHandler):
     def __init__(self, *args, **kwargs):
         super(MessageHandler, self).__init__(*args, **kwargs)
-        self.redis = Client()
-        self.redis.connect()
+        self.context = Context()
+        self.socket = self.context.socket(SUB)
+        self.socket.connect('tcp://127.0.0.1:5560')
+        self.stream = ZMQStream(self.socket)
+        self.stream.on_recv(self.callback)
 
     def get_current_user(self):
         user = self.get_secure_cookie("user")
@@ -32,32 +37,13 @@ class MessageHandler(WebSocketHandler):
         # listens for handshake from page
         if "user:" in msginfo['msg']:
             self.channel = msginfo['msg'].split(':')[1]
-            # need to split the rest off to new func so it can be asynchronous
-            self.listen()
-
-    # decorator turns the function into an asynchronous generator object
-    @engine
-    def listen(self):
-        # runs task given, with the yield required to get returned value
-        # equivalent of callback/wait pairing from tornado.gen
-        yield Task(self.redis.subscribe, self.channel)
-        if not self.redis.subscribed:
-            self.write_message('ERROR IN SUBSCRIPTION')
-        # listen from tornadoredis makes the listen object asynchronous
-        # if using standard redis lib, it blocks while listening
-        self.redis.listen(self.callback)
-        # fight race condition by loading from redis after listen started
-        # need to use std redis lib because tornadoredis is already subscribed
-        oldmessages = r_server.lrange(self.channel + ':messages', 0, -1)
-        if oldmessages is not None:
-            for message in oldmessages:
-                self.write_message(message)
+            self.socket.setsockopt(SUBSCRIBE, self.channel)
+            # fight race condition by loading from channel after listen started
+            oldmessages = r_server.lrange(self.channel + ':messages', 0, -1)
+            if oldmessages is not None:
+                for message in oldmessages:
+                    self.write_message(message)
 
     def callback(self, msg):
         if msg.kind == 'message':
             self.write_message(str(msg.body))
-
-    @engine
-    def on_close(self):
-        yield Task(self.redis.unsubscribe, self.channel)
-        self.redis.disconnect()

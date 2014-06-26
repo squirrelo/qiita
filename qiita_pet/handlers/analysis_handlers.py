@@ -18,7 +18,7 @@ from tornado.web import authenticated, asynchronous
 from collections import defaultdict
 
 from qiita_pet.handlers.base_handlers import BaseHandler
-from qiita_ware.run import run_analysis
+from qiita_ware.run import run_analysis, cleanup_redis
 from qiita_db.user import User
 from qiita_db.analysis import Analysis
 from qiita_db.study import Study
@@ -158,10 +158,13 @@ class AnalysisResultsHandler(BaseHandler):
             jobject = Job(job)
             jobres[jobject.datatype].append((jobject.command[0],
                                              jobject.results))
+        user = self.get_current_user()
 
-        self.render("analysis_results.html", user=self.get_current_user(),
-                    jobres=jobres, aname=analysis.name,
-                    basefolder=get_db_files_base_dir())
+        self.render("analysis_results.html", user=user, jobres=jobres,
+                    aname=analysis.name, basefolder=get_db_files_base_dir())
+
+        # clean up the redis channel
+        cleanup_redis(user, aid)
 
 
 class ShowAnalysesHandler(BaseHandler):
