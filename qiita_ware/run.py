@@ -39,6 +39,12 @@ def _job_comm_wrapper(user, analysis_id, job):
         "msg": None,
         "command": "%s: %s" % (job.datatype, name)
     }
+    if job.status != 'queued':
+        # job already run, so just say completed
+        msg["msg"] = "Completed"
+        r_server.rpush(user + ":messages", dumps(msg))
+        r_server.publish(user, dumps(msg))
+        return
 
     o_fmt = ' '.join(['%s %s' % (k, v) for k, v in options.items()])
     c_fmt = "%s %s" % (command, o_fmt)
