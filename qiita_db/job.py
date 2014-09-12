@@ -218,10 +218,15 @@ class Job(QiitaStatusObject):
             return_existing is False and an exact duplicate of the job already
             exists in the DB.
         """
+        analysis_sql = ("INSERT INTO qiita.analysis_job (analysis_id, job_id) "
+                   "VALUES (%s, %s)")
         exists, job = cls.exists(datatype, command, options, analysis,
                                  return_existing=True)
+        conn_handler = SQLConnectionHandler()
         if exists:
             if return_existing:
+                # add job to analysis
+                conn_handler.execute(analysis_sql, (analysis.id, job.id))
                 return job
             else:
                 raise QiitaDBDuplicateError(
@@ -229,7 +234,6 @@ class Job(QiitaStatusObject):
                     "analysis: %s" % (datatype, command, options, analysis.id))
 
         # Get the datatype and command ids from the strings
-        conn_handler = SQLConnectionHandler()
         datatype_id = convert_to_id(datatype, "data_type", conn_handler)
         sql = "SELECT command_id FROM qiita.command WHERE name = %s"
         command_id = conn_handler.execute_fetchone(sql, (command, ))[0]
@@ -243,9 +247,7 @@ class Job(QiitaStatusObject):
                                                command_id, opts_json))[0]
 
         # add job to analysis
-        sql = ("INSERT INTO qiita.analysis_job (analysis_id, job_id) VALUES "
-               "(%s, %s)")
-        conn_handler.execute(sql, (analysis.id, job_id))
+        conn_handler.execute(analysis_sql, (analysis.id, job_id))
 
         return cls(job_id)
 
