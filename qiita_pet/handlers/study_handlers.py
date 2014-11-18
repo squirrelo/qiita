@@ -8,7 +8,7 @@ r"""Qitta study handlers for the Tornado webserver.
 # The full license is in the file LICENSE, distributed with this software.
 # -----------------------------------------------------------------------------
 from __future__ import division
-from collections import namedtuple
+from collections import namedtuple, defaultdict
 
 from tornado.web import authenticated, HTTPError, asynchronous
 from tornado.gen import coroutine, Task
@@ -101,14 +101,14 @@ def _build_study_info(studytype, user=None):
         return infolist
 
 
-def check_access(user, study, no_public=False):
+def check_access(user, study, no_public=False, raise_error=False):
     """make sure user has access to the study requested"""
     if not study.has_access(user, no_public):
-        if no_public:
-            return False
-        else:
+        if raise_error:
             raise HTTPError(403, "User %s does not have access to study %d" %
                                  (user.id, study.id))
+        else:
+            return False
     return True
 
 
@@ -200,6 +200,34 @@ class PublicStudiesHandler(BaseHandler):
         callback(_build_study_info("public"))
 
 
+class PreprocessingSummaryHandler(BaseHandler):
+    @authenticated
+    def get(self, preprocessed_data_id):
+        ppd_id = int(preprocessed_data_id)
+        ppd = PreprocessedData(ppd_id)
+        study = Study(ppd.study)
+        check_access(User(self.current_user), study, raise_error=True)
+
+        back_button_path = self.get_argument(
+            'back_button_path', '/study/description/%d' % study.id)
+
+        files_tuples = ppd.get_filepaths()
+        files = defaultdict(list)
+
+        for fp, fpt in files_tuples:
+            files[fpt].append(fp)
+
+        with open(files['log'][0], 'U') as f:
+            contents = f.read()
+            contents = contents.replace('\n', '<br/>')
+            contents = contents.replace('\t', '&nbsp;&nbsp;&nbsp;&nbsp;')
+
+        title = ('Preprocessed Data: %d' % ppd_id)
+
+        self.render('text_file.html', title=title, contents=contents,
+                    user=self.current_user, back_button_path=back_button_path)
+
+
 class StudyDescriptionHandler(BaseHandler):
     def get_raw_data(self, rdis, callback):
         """Get all raw data objects from a list of raw_data_ids"""
@@ -217,8 +245,7 @@ class StudyDescriptionHandler(BaseHandler):
         callback(d)
 
     def remove_add_study_template(self, raw_data, study_id, fp_rsp, callback):
-        """Removes prep templates, raw data and sample template and adds
-           a new one
+        """Replace prep templates, raw data, and sample template with a new one
         """
         for rd in raw_data():
             if PrepTemplate.exists((rd)):
@@ -247,31 +274,18 @@ class StudyDescriptionHandler(BaseHandler):
         callback(d)
 
     @coroutine
-    def display_template(self, study_id, msg, msg_level, tab_to_display=""):
+    def display_template(self, study, msg, msg_level, tab_to_display=""):
         """Simple function to avoid duplication of code"""
-        # make sure study is accessible and exists, raise error if not
-        study = None
-        study_id = int(study_id)
-        try:
-            study = Study(study_id)
-        except QiitaDBUnknownIDError:
-            # Study not in database so fail nicely
-            raise HTTPError(404, "Study %d does not exist" % study_id)
-        else:
-            check_access(User(self.current_user), study)
-
         # getting raw filepath_ types
         fts = [k.split('_', 1)[1].replace('_', ' ')
                for k in get_filepath_types() if k.startswith('raw_')]
         fts = ['<option value="%s">%s</option>' % (f, f) for f in fts]
 
-        study = Study(study_id)
         user = User(self.current_user)
         # getting the RawData and its prep templates
         available_raw_data = yield Task(self.get_raw_data, study.raw_data())
         available_prep_templates = yield Task(self.get_prep_templates,
                                               available_raw_data)
-
         # other general vars, note that we create the select options here
         # so we do not have to loop several times over them in the template
         data_types = sorted(viewitems(get_data_types()), key=itemgetter(1))
@@ -297,38 +311,46 @@ class StudyDescriptionHandler(BaseHandler):
 
         # New Type is for users to add a new user-defined investigation type
         user_defined_terms = ontology.user_defined_terms + ['New Type']
-
         self.render('study_description.html', user=self.current_user,
                     study_title=study.title, study_info=study.info,
-                    study_id=study_id, filetypes=''.join(filetypes),
+                    study_id=study.id, filetypes=''.join(filetypes),
                     user_level=user.level, data_types=''.join(data_types),
                     available_raw_data=available_raw_data,
                     available_prep_templates=available_prep_templates,
-                    ste=SampleTemplate.exists(study_id),
+                    ste=SampleTemplate.exists(study.id),
                     filepath_types=''.join(fts), ena_terms=''.join(ena_terms),
                     tab_to_display=tab_to_display,
                     level=msg_level, message=msg,
-                    can_upload=check_access(user, study, True),
+                    can_upload=check_access(user, study, no_public=True),
                     other_studies_rd=''.join(other_studies_rd),
                     user_defined_terms=user_defined_terms,
-                    files=get_files_from_uploads_folders(str(study_id)))
+                    files=get_files_from_uploads_folders(str(study.id)))
 
     @authenticated
     def get(self, study_id):
         try:
             study = Study(int(study_id))
         except QiitaDBUnknownIDError:
+            # Study not in database so fail nicely
             raise HTTPError(404, "Study %s does not exist" % study_id)
         else:
-            check_access(User(self.current_user), study)
+            check_access(User(self.current_user), study,
+                         raise_error=True)
 
-        self.display_template(int(study_id), "")
+        self.display_template(study, "", 'info')
 
     @authenticated
     @coroutine
     def post(self, study_id):
         study_id = int(study_id)
-        check_access(User(self.current_user), Study(study_id))
+        try:
+            study = Study(study_id)
+        except QiitaDBUnknownIDError:
+            # Study not in database so fail nicely
+            raise HTTPError(404, "Study %d does not exist" % study_id)
+        else:
+            check_access(User(self.current_user), study,
+                         raise_error=True)
 
         # vars to add sample template
         sample_template = self.get_argument('sample_template', None)
@@ -366,7 +388,6 @@ class StudyDescriptionHandler(BaseHandler):
                 edit_investigation_type == "Non selected":
             edit_investigation_type = None
 
-        study = Study(study_id)
         msg_level = 'success'
         if sample_template:
             # processing sample templates
@@ -387,7 +408,7 @@ class StudyDescriptionHandler(BaseHandler):
                 error_msg = ''.join(format_exception_only(e, exc_info()))
                 msg = ('<b>An error occurred parsing the sample template: '
                        '%s</b><br/>%s' % (basename(fp_rsp), error_msg))
-                self.display_template(study_id, msg, "danger")
+                self.display_template(study, msg, "danger")
                 return
 
             msg = ("The sample template '%s' has been added" %
@@ -409,7 +430,7 @@ class StudyDescriptionHandler(BaseHandler):
                     error_msg = ''.join(format_exception_only(e, exc_info()))
                     msg = ('An error occurred creating a new raw data'
                            'object. %s' % (error_msg))
-                    self.display_template(study_id, msg, "danger")
+                    self.display_template(study, msg, "danger")
                     return
                 msg = ""
             else:
@@ -450,7 +471,7 @@ class StudyDescriptionHandler(BaseHandler):
                 error_msg = ''.join(format_exception_only(e, exc_info()))
                 msg = ('An error occurred parsing the prep template: '
                        '%s. %s' % (basename(fp_rpt), error_msg))
-                self.display_template(study_id, msg, "danger",
+                self.display_template(study, msg, "danger",
                                       str(raw_data_id))
                 return
 
@@ -481,7 +502,7 @@ class StudyDescriptionHandler(BaseHandler):
             except QiitaDBColumnError as e:
                 error_msg = ''.join(format_exception_only(e, exc_info()))
                 msg = 'Invalid investigation type: %s' % error_msg
-                self.display_template(study_id, msg, "danger",
+                self.display_template(study, msg, "danger",
                                       str(pt.raw_data))
                 return
 
@@ -494,7 +515,7 @@ class StudyDescriptionHandler(BaseHandler):
             msg_level = 'danger'
             tab_to_display = ""
 
-        self.display_template(study_id, msg, msg_level, tab_to_display)
+        self.display_template(study, msg, msg_level, tab_to_display)
 
 
 class CreateStudyHandler(BaseHandler):

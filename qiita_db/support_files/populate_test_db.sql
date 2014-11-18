@@ -314,7 +314,7 @@ INSERT INTO qiita.preprocessed_processed_data (preprocessed_data_id, processed_d
 INSERT INTO qiita.filepath (filepath, filepath_type_id, checksum, checksum_algorithm_id, data_directory_id) VALUES ('GreenGenes_13_8_97_otus.fasta', 10, '852952723', 1, 6), ('GreenGenes_13_8_97_otu_taxonomy.txt', 11, '852952723', 1, 6), ('GreenGenes_13_8_97_otus.tree', 12, '852952723', 1, 6);
 
 -- Populate the reference table
-INSERT INTO qiita.reference (reference_name, reference_version, sequence_filepath, taxonomy_filepath, tree_filepath) VALUES ('GreenGenes', '13_8', 8, 9, 10);
+INSERT INTO qiita.reference (reference_name, reference_version, sequence_filepath, taxonomy_filepath, tree_filepath) VALUES ('Greengenes', '13_8', 8, 9, 10);
 
 -- Insert the processed params uclust used for preprocessed data 1
 INSERT INTO qiita.processed_params_uclust (similarity, enable_rev_strand_match, suppress_new_clusters, reference_id) VALUES (0.97, TRUE, TRUE, 1);
@@ -356,7 +356,7 @@ INSERT INTO qiita.analysis_users (analysis_id, email) VALUES (1, 'shared@foo.bar
 INSERT INTO qiita.job_results_filepath (job_id, filepath_id) VALUES (1, 12), (2, 13);
 
 -- Add an ontology
-INSERT INTO qiita.ontology (ontology_id, ontology, fully_loaded, fullname, query_url, source_url, definition, load_date) VALUES (999999999, E'ENA_test', E'1', E'European Nucleotide Archive Submission Ontology', NULL, E'http://www.ebi.ac.uk/embl/Documentation/ENA-Reads.html', E'The ENA CV is to be used to annotate XML submissions to the ENA.', '2009-02-23 00:00:00');
+INSERT INTO qiita.ontology (ontology_id, ontology, fully_loaded, fullname, query_url, source_url, definition, load_date) VALUES (999999999, E'ENA', E'1', E'European Nucleotide Archive Submission Ontology', NULL, E'http://www.ebi.ac.uk/embl/Documentation/ENA-Reads.html', E'The ENA CV is to be used to annotate XML submissions to the ENA.', '2009-02-23 00:00:00');
 
 -- Add some ontology values
 INSERT INTO qiita.term (term_id, ontology_id, term, identifier, definition, namespace, is_obsolete, is_root_term, is_leaf) VALUES (2052508974, 999999999, E'Whole Genome Sequencing', E'ENA:0000059', NULL, NULL, NULL, NULL, NULL);
