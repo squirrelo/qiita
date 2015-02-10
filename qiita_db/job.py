@@ -25,6 +25,7 @@ Classes
 # The full license is in the file LICENSE, distributed with this software.
 # -----------------------------------------------------------------------------
 from __future__ import division
+import __builtin__
 from json import loads
 from os.path import join, relpath
 from os import remove
@@ -32,6 +33,8 @@ from glob import glob
 from shutil import rmtree
 from functools import partial
 from collections import defaultdict
+
+from future.utils import viewitems
 
 from .base import QiitaStatusObject
 from .util import (insert_filepaths, convert_to_id, get_db_files_base_dir,
@@ -442,11 +445,17 @@ class Command(object):
     ----------
     name
     command
-    input_opts
-    required_opts
-    optional_opts
-    output_opts
+    required
+    optional
+    options
+    triggers
+    values
+
+    Methods
+    -------
+    set
     """
+
     @classmethod
     def create_list(cls):
         """Creates list of all available commands
@@ -457,6 +466,9 @@ class Command(object):
         """
         conn_handler = SQLConnectionHandler()
         commands = conn_handler.execute_fetchall("SELECT * FROM qiita.command")
+        options = conn_handler.execute_fetchall(
+            "SELECT * FROM qiita.command_option ORDER BY "
+            "command_id, command_option_id ASC")
         # create the list of command objects
         return [cls(c["name"], c["command"], c["input"], c["required"],
                 c["optional"], c["output"]) for c in commands]
@@ -510,28 +522,127 @@ class Command(object):
             return False
         if self.command != other.command:
             return False
-        if self.input_opts != other.input_opts:
-            return False
-        if self.output_opts != other.output_opts:
-            return False
-        if self.required_opts != other.required_opts:
-            return False
-        if self.optional_opts != other.optional_opts:
+        if self.options != other.options:
             return False
         return True
 
     def __ne__(self, other):
         return not self.__eq__(other)
 
-    def __init__(self, name, command):
+    def __init__(self, name, command, options):
         """Creates the command object
 
-        Parameters:
+        Parameters
+        ----------
         name : str
             Name of the command
-        command: str
+        command : str
             python command to run
-        
+        options : list of dicts
+            options for the command
         """
         self.name = name
         self.command = command
+        self._opts = {}
+        self._triggers = {}
+        self.values = {}
+
+        for option in options:
+            opt = dict(option)
+            if opt['triggers']:
+                # add triggers to triggeres dict keyed to option
+                self._triggers[opt['command_option_id']] = opt['triggers']
+            opt.pop('triggers')
+            opt.pop('command_id')
+            self._opts.append(opt)
+            # set values to default values
+            self.values[opt['option']] = opt['def']
+
+
+    @property
+    def required(self):
+        """Returns all required options
+
+        Returns
+        -------
+        dict of dicts
+            option parameters keyed to the option itself
+        """
+        return {opt['option']: opt for opt in self._options
+                if opt['required'] is True}
+
+    @property
+    def optional(self):
+        """Returns all optional options
+
+        Returns
+        -------
+        dict of dicts
+        """
+        return {opt['option']: opt for opt in self._options
+                if opt['required'] is True}
+
+    @property
+    def triggers(self):
+        """Returns all triggers for optional options
+
+        Returns
+        -------
+        dict of lists
+
+        Notes
+        -----
+        Triggers are keyed as command_option_id of a command, with a list of
+        all command_option_ids made required by setting the key option.
+        """
+        return self._triggers
+
+    @property
+    def options(self):
+        """Return all options available for command
+
+        Returns
+        -------
+        list of dicts
+        """
+        return self._options
+
+    def set(self, values):
+        """Validates and sets option values
+
+        Parameters
+        ----------
+        values : dict
+            Values to set for the command, in format {option: value}
+
+        Returns
+        -------
+        bool
+            Whether options were set successfully or not
+
+        Notes
+        -----
+        If the option requires a filepath, you must pass the filepath_id as
+        the dictionary value.
+        """
+        conn_handler = SQLConnectionHandler()
+        for opt, value in viewitems(values):
+            if self._opts[opt]['input_type'] == 'filepath':
+                # validate filepath type
+                fp_type = conn_handler.execute_fetchone(
+                    'SELECT filepath_type_id FROM filepath WHERE '
+                    'filepath_id = %s', [value])
+                if not fp_type:
+                    # nothing found in SQL database, so return false
+                    return False
+                elif fp_type[0] != self._opts[opt]['filepath_type_id']:
+                    # not correct type of file, so return false
+                    return False
+            else:
+                # since not filepath type, must be a default python type
+                opt_type = getattr(__builtin__, self._opts[opt]['input_type'])
+                if not isinstance(value, opt_type):
+                    return False
+
+        self.values.update(values)
+        return True
