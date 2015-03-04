@@ -1,0 +1,52 @@
+{% extends sitebase.html %}
+{% block head %}
+<script type="text/javascript">
+	$( document ).ready(function() { 
+		$("#samples").chosen({max_selected_options: 500, width: "95%"});
+		$("#metacols").chosen({max_selected_options: 10, width: "95%"});
+	});
+
+  //http://stackoverflow.com/a/11172403
+	function toggle_select(select) {
+		if(select) { $('option .sample').prop('selected', true); }
+		else { $('.sample.option').prop('selected', false); }
+		$("#samples").trigger("chosen:updated");
+  };
+</script>
+{% end %}
+
+{% block content%}
+<h1>Edit metadata</h1>
+<div class="row">
+	<div id="samples-div" class="col-md-6">
+		<h3>Samples</h3>
+		<b>A maximum of 500 samples may be selected</b><br/>
+		<select id="samples" multiple data-placeholder="Choose your samples...">
+  {% for sample in samples%}
+			<option class="sample option" value='{{sample}}'>{{sample}}</option>
+  {% end %}
+		</select><br/>
+		<a href="#" class="select" onclick="toggle_select(true)">Select all</a> | <a href="#" class="deselect" onclick="toggle_select(false)">Deselect all</a>
+	</div>
+	<div id="metacols-div" class="col-md-6">
+	<h3>Metadata Columns</h3>
+	<b>A maximum of 10 metadata columns may be selected</b><br/>
+		<select id="metacols" multiple data-placeholder="Choose your columns...">
+  {% for meta in metacols%}
+			<option class="metacol option" value='{{meta}}'>{{meta}}</option>
+  {% end %}
+		</select>
+	</div>
+</div>
+<div class="row">
+	<div class="col-sm-12" style="padding:10px">
+	<input type="button" value="update table"></input>
+	</div>
+</div>
+<div class="row">
+	<div class="col-lg-12">
+	<h1>TABLE</h1>
+	<input type="button" value="Save"></input>
+	</div>
+</div>
+{% end %}

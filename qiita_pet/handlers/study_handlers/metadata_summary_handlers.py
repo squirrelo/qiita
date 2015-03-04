@@ -89,3 +89,15 @@ class MetadataSummaryHandler(BaseHandler):
         self.render('metadata_summary.html',
                     study_title=study.title, stats=stats,
                     back_button_path=back_button_path)
+
+
+class MetadataEditHandler(BaseHandler):
+    def get(self, study_id):
+        samples = ["Sample %d" % x for x in range(400)]
+        metacols = ["Meta %d" % x for x in range(200)]
+
+        self.render("edit_metadata.html",
+                    samples=samples, metacols=metacols)
+
+    def post(self, study_id):
+        pass

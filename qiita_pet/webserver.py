@@ -21,7 +21,7 @@ from qiita_pet.handlers.study_handlers import (
     StudyEditHandler, PrivateStudiesHandler, PublicStudiesHandler,
     StudyDescriptionHandler, MetadataSummaryHandler, EBISubmitHandler,
     CreateStudyAJAX, ShareStudyAJAX, StudyApprovalList,
-    PreprocessingSummaryHandler, VAMPSHandler)
+    PreprocessingSummaryHandler, VAMPSHandler, MetadataEditHandler)
 from qiita_pet.handlers.websocket_handlers import MessageHandler
 from qiita_pet.handlers.logger_handlers import LogEntryViewerHandler
 from qiita_pet.handlers.upload import UploadFileHandler, StudyUploadFileHandler
@@ -82,6 +82,7 @@ class Application(tornado.web.Application):
             (r"/study/sharing/", ShareStudyAJAX),
             (r"/study/description/(.*)", StudyDescriptionHandler),
             (r"/study/upload/(.*)", StudyUploadFileHandler),
+            (r"/study/edit_meta/(.*)", MetadataEditHandler),
             (r"/upload/", UploadFileHandler),
             (r"/check_study/", CreateStudyAJAX),
             (r"/stats/", StatsHandler),
