@@ -159,8 +159,19 @@ def _build_study_info(user, study_proc=None, proc_samples=None):
         build_samples = True
 
     # get list of studies for table
-    study_set = user.user_studies.union(
-        Study.get_by_status('public')).union(user.shared_studies)
+    if user.level == 'admin':
+        # access to all studies
+        study_set = set(Study.get_by_status('public')).union(
+            Study.get_by_status('private')).union(
+                Study.get_by_status('awaiting_approval')).union(
+                    Study.get_by_status('sandbox'))
+    elif user.level == 'superuser':
+        # access to all public and private studies
+        study_set = set(Study.get_by_status('public')).union(
+            Study.get_by_status('private'))
+    else:
+        study_set = user.user_studies.union(
+            Study.get_by_status('public')).union(user.shared_studies)
     if study_proc is not None:
         study_set = study_set.intersection(study_proc)
     if not study_set:
